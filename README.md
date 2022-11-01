@@ -60,6 +60,8 @@ The GAM model was used to fit each of the 5 individual key indicators. As seen, 
 
 A cross-validation (CV) will be performed on the five indicators to determine the best K value to use in our GAM model.
 
+<img src="https://raw.githubusercontent.com/LKPelayoUribe/Analyzing-key-financial-indicators/main/Cross_Val.png">
+
 - CV best K = 12 for the macd_26 indicator
 - CV best K = 12 for the macd_9 indicator
 - CV best K = 15 for the kijun indicator

@@ -1,0 +1,761 @@
+---
+output:
+  pdf_document:
+    keep_tex: true
+    fig_caption: true
+    toc: true
+    toc_depth: 3 
+    number_sections: true
+    citation_package: natbib
+    latex_engine: pdflatex
+    template: ../latex-templates/report.tex
+  html_document:
+    
+    df_print: paged
+title: "Bitcoin closing price prediction"
+subtitle: "Can key indicators be found to predict next day closing price"
+author: 
+- name: "Laura Pelayo, Shawn Petersen, Josh Pickel, Justin Pickel"
+  affiliation: "Washington State University"
+keywords: |
+    linear lasso ridge gam correlation cross validation knots
+abstract: |
+  \noindent This research paper provides an analyis of key stock indicators and can they be used to predict next day closing price.
+sectionnumberdepth: 3
+titleEndnotes: "ENDNOTES"
+titleReferences: "REFERENCES"
+columnsReferences: 2
+titleTOC:  "TABLE OF CONTENTS"
+bibliography: ../biblio/master.bib
+bibliostyle: ../biblio/ormsv080.bst
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r data wrangling libraries, include = FALSE, echo = FALSE}
+# set default parameters for knitting (output)
+# "include = F" means this particular chunk will now show in output
+# but by default, the rest of the chunks will display
+
+require (dplyr)
+require (tidyr)
+require (purrr)
+require (rmarkdown)
+require (digest)
+require (car)
+require (olsrr)
+require (sjmisc)
+require (sjPlot)
+require (ggplot2)
+require (tidyverse)
+require(plotly)
+require(fpp2)
+require(astsa)
+require(lubridate)
+require(tidyquant)
+require(BatchGetSymbols)
+require(corrgram)
+require(boot)
+require(mgcViz)
+
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(coefplot)
+library(corrgram)
+library(cdata)
+
+library(Quandl)
+library(quantmod)
+library(data.table)
+library(corrplot)
+library(Hmisc)
+library(car)
+library(gam)
+require(lubridate)
+library(GGally)
+library(glmnet)
+
+library(mgcv)
+require(mgcv)
+
+```
+
+
+
+
+\section{Introduction}
+\label{sec:intro}
+
+Bitcoin (BTC) is a consensus network that enables a new payment system and a fully digital currency. Powered by its users, it peers into a payment network that does not require a central authority to operate. On October 31, 2008, a person or group of people working under the pseudonym "Satoshi Nakamoto" published the Bitcoin Whitepaper and described it as: "A completely peer-to-peer version of electronic cash, which allows you to send online payments directly. From party to another party. 
+
+
+Our team has decided to answer the question can we determine the best model to accurately predict the closing price of bitcoin? We will various technical indicators commonly used in financial trading as our predictor variables and the closing price of bitcoin as our response variable. Our team would also like to determine which predictors are statistically significant in predicting the closing price of bitcoin.
+
+Our team is going to evaluate the accuracy of four models:
+
+*  1. A simple linear regression model
+*  2. A Lasso regression model.
+*  3. A ridge regression model.
+*  4. A GAM model.
+  
+We are going to split the data into test and train datasets in order to compare the test MSE across our models. The model with the lowest test MSE will be considered the best model to predict the closing price of bitcoin.
+
+Our data set 'bitcoin_clean2.csv' was created by pulling in bitcoin price data from yahoo finance over the last 2 years. We then added several technical indicators to our data set by utilizing a technical indicator package in python. In order for our model to be useful we decided to shift the technical indicator data by one day as this allows us to determine if we can use the previous days technical indicator data to predict the current days closing price.
+
+The first model our team will evaluate is the simple linear regression model.
+
+
+\begin{figure}[!ht]
+%% figures have hrule, tables have hline
+	\hrule
+	\caption{ \textbf{Bitcoin Can we make money?} }
+	\begin{center}
+	    \scalebox{0.30}{	\includegraphics[trim = 0 0 0 0,clip,width=\textwidth]{graphics/bitcoin.jpg} }
+	\end{center}
+	\label{fig:Bitcoin}
+	\hrule
+\end{figure}
+
+
+\newpage
+
+
+\section{Dataset}
+\label{sec:readdata}
+Reading the bitcoin dataset.  The dataset contains: 
+
+* {high,low,open,close}
+* 14 indicators {volumne, macd_26, macd_9, macd_diff, adx, adx_neg, adx_pos, span_a, span_b, kijun, tenkan, rsi, cmf, sma}
+
+
+```{r load data,include=TRUE, echo=FALSE}
+
+Crypto_Data = read.csv("bitcoin_clean2.csv")
+#head(Crypto_Data,n=2L)
+Crypto_Data$date = mdy(Crypto_Data$date)
+
+ggplot(Crypto_Data,aes(date, close)) +
+  geom_line() +
+  theme(panel.border = element_blank(),
+        panel.background = element_blank(),
+        panel.grid.minor = element_line(colour = "grey90"),
+        panel.grid.major = element_line(colour = "grey90"),
+        panel.grid.major.x = element_line(colour = "grey90"),
+        axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12, face = "bold")) +
+  labs(x = "Date", y = "BTC Close Price")
+
+
+set.seed(1)
+data.set = na.omit(Crypto_Data)
+data.set = Crypto_Data[,c(4:18)]
+
+sample <- sample.int(n = nrow(data.set), size = ceiling(.8*nrow(data.set)), replace = F)
+train = data.set[sample,]
+test = data.set[-sample,]
+
+x_train = model.matrix(close~. ,train)[,-1]
+y_train = train$close
+x_test = model.matrix(close~. ,test)[,-1]
+y_test = test$close
+
+```
+
+\subsection{BTC closing price history}
+\label{sec:closinggraph}
+
+The plot is the historical closing price for BTC. The intent of the project is to determine if a model can be found and used to predict the closing price.
+
+
+
+\newpage
+
+\section{Linear Analysis Closing Price}
+\label{sec:linear}
+Linear Analysis performed using linear regression (lm) on the closing BTC price and each of the 14 key indicators
+
+
+
+```{r Bitcoin open lm analysis 2, include=TRUE, echo=FALSE}
+par(mfrow = c(2,2)) 
+
+Indicators = Crypto_Data[,c(3:18)]
+lm.fit.BTC.close=lm(formaula=close~., data = Indicators)
+summary(lm.fit.BTC.close)
+plot(lm.fit.BTC.close)
+
+
+```
+
+
+
+
+\section{Linear Analysis}
+\label{sec:linear2}
+Given the p-values of the closing price of BTC, we may reject the null hypothesis for the following indicators.
+
+* volume (previous days trading volume)
+* macd_26 (moving average convergence divergence, 26 day trend)
+* macd_9 (moving average convergence divergence, 9 day trend)
+* span_a (measures momentum)
+* Kijun (midpoint price the last 26 periods)
+* Tankan (japanese indicator)
+* RSI (relative strength index)
+
+\newpage
+
+```{r Best Indicators, echo=FALSE}
+
+ggcorr.df = Crypto_Data[,c(3,4,6,7,9,12:16,18)]
+
+# heat map correlation
+ggcorr(ggcorr.df,label = TRUE, nbreaks = 7, palette = "RdGy", label_size = 3, label_color = "white")
+
+# scatter plot correlation
+scatterplotMatrix(~Crypto_Data$close+ggcorr.df$macd_26+ggcorr.df$macd_9+ggcorr.df$kijun+ggcorr.df$tenkan+ggcorr.df$rsi)
+
+
+```
+
+\subsection{Correlation Analysis}
+\label{sec:l1}
+
+We are able to see the close price of BTC share a strong linear correlation with Kijun, Tankan and SMA indicators. Also with span_a and span_b but less so with macd_26 and macd_9. We can also see signs of high colinearity between diffrent predictor variables.
+
+
+```{r BTC w/MACD, echo=FALSE}
+par(mfrow = c(2,2)) 
+fit.open.MACD = lm(open~macd_26+macd_9, data = Indicators)
+plot(fit.open.MACD)
+
+```
+
+
+
+```{r BTC w/SPAN, echo=FALSE}
+par(mfrow = c(2,2)) 
+fit.open.SPAN = lm(open~span_a+span_b, data = Indicators)
+plot(fit.open.SPAN)
+
+```
+
+
+
+```{r BTC w/KIJUN, echo=FALSE}
+par(mfrow = c(1,1)) 
+
+{
+fit.close.KIJUN = lm(close~kijun, data = Indicators)
+plot(Indicators$kijun~Indicators$close,xlab="Close Price", ylab="Kijun Indicator",main= "BTC")
+abline(fit.close.KIJUN,col = "green")
+legend("topleft", c("Regression"), col = c("green"), lty=1)
+
+
+fit.close.TENKAN = lm(close~tenkan, data = Indicators)
+plot(Indicators$tenkan~Indicators$close,xlab="Close Price", ylab="Tenkan Indicator",main= "BTC")
+abline(fit.close.TENKAN,col = "blue")
+legend("topleft", c("Regression"), col = c("blue"), lty=1)
+
+fit.close.MACD26 = lm(close~macd_26, data = Indicators)
+plot(Indicators$macd_26~Indicators$close,xlab="Close Price", ylab="MACD26 Indicator",main= "BTC")
+abline(fit.close.MACD26,col = "red")
+legend("topleft", c("Regression"), col = c("red"), lty=1)
+
+fit.close.MACD9 = lm(close~macd_9, data = Indicators)
+plot(Indicators$macd_9~Indicators$close,xlab="Close Price", ylab="MACD9 Indicator",main= "BTC")
+abline(fit.close.MACD9,col = "green")
+legend("topleft", c("Regression"), col = c("green"), lty=1)
+
+
+fit.close.RSI = lm(close~rsi, data = Indicators)
+plot(Indicators$rsi~Indicators$close,xlab="Close Price", ylab="RSE Indicator",main= "BTC")
+abline(fit.close.RSI,col = "green")
+legend("topleft", c("Regression"), col = c("green"), lty=1)
+}
+
+```
+
+
+
+```{r BTC w/TENKAN, echo=FALSE}
+par(mfrow = c(1,1)) 
+fit.close.TENKAN = lm(close~tenkan, data = Indicators)
+
+plot(Indicators$tenkan~Indicators$close,xlab="Close Price", ylab="Tenkan Indicator",main= "BTC")
+abline(fit.close.TENKAN,col = "blue")
+legend("topleft", c("Regression"), col = c("blue"), lty=1)
+
+```
+
+
+```{r BTC w/SMA, echo=FALSE}
+par(mfrow = c(1,1)) 
+fit.close.SMA = lm(close~sma, data = Indicators)
+
+plot(Indicators$sma~Indicators$close,xlab="Open Price", ylab="SMA Indicator",main= "BTC")
+abline(fit.close.SMA,col = "red")
+legend("topleft", c("Regression"), col = c("red"), lty=1)
+
+```
+
+\subsection{Analysis}
+\label{sec:l2}
+
+Even though we can reject the null hypothesis for all the indicators above, the traditional linear regression model is not the best fit for most. It may be because the BTC prices are volatile, and we need a model that provides more flexibility. 
+
+\newpage
+
+```{r clean data,include=TRUE, echo=FALSE}
+#remove the label column
+df1 = Crypto_Data[ , -which(names(Crypto_Data) %in% c("label"))]
+
+#convert the date column from a string to a date type
+df1$date <- mdy(df1$date)
+
+#extract all the columns, except the {high, low, and open} columns
+df2 = df1[,c(4,5,6,7,8,9,10,11,12,13,14,15,16,17,18)]
+
+```
+
+
+
+
+```{r linear model data,include=FALSE, echo=FALSE}
+
+#Simple linear model to find the key indicators for predicting closing price
+par(mfrow = c(2,2)) 
+crypto.lm = lm(formula=close~., data=train)
+summary(crypto.lm)
+plot(crypto.lm)
+
+
+```
+\section{Analysis}
+\label{sec:l22}
+
+Using a simple linear model we were able to determine the following indicators from our linear regression analsysis and they will be used for a GAM model
+
+* macd_26 (moving average convergence divergence, 26 day trend)
+* macd_9 (moving average convergence divergence, 9 day trend)
+* kijun (midpoint price the last 26 periods)
+* tenkan (japans indicator)
+* rsi (relative strength index)
+
+
+A dataframe was created the closing prices and the five listed key indicators
+
+```{r simple correlation data,include=TRUE, echo=FALSE}
+
+df3 = df2[,c(1,3,4,11,12,13)]
+attach(df3)
+
+crypto.lm2 = lm(formula=close~., data=df3)
+summary(crypto.lm2)
+
+
+```
+
+
+
+```{r gam1 model,include=TRUE, echo=FALSE}
+
+library(modelr)
+
+linear.mod = lm(close ~ macd_26, data = train)
+smooth.mod = mgcv::gam(close ~ s(macd_26), data = train)
+wiggly.mod = mgcv::gam(close ~ s(macd_26, k = 15), data = train)
+
+
+train %>% 
+  gather_predictions(linear.mod, smooth.mod, wiggly.mod) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = macd_26, y = close)) + 
+  geom_point() + 
+  geom_line(aes(y = pred), color = "red") + 
+  facet_wrap(~model)
+```
+
+
+```{r gam2 model,include=TRUE, echo=FALSE}
+linear.mod = lm(close ~ macd_9, data = train)
+smooth.mod = mgcv::gam(close ~ s(macd_9), data = train)
+wiggly.mod = mgcv::gam(close ~ s(macd_9, k = 15), data = train)
+
+
+train %>% 
+  gather_predictions(linear.mod, smooth.mod, wiggly.mod) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = macd_9, y = close)) + 
+  geom_point() + 
+  geom_line(aes(y = pred), color = "red") + 
+  facet_wrap(~model)
+```
+
+```{r gam3 model,include=TRUE, echo=FALSE}
+#kijun
+linear.mod = lm(close ~ kijun, data = train)
+smooth.mod = mgcv::gam(close ~ s(kijun), data = train)
+wiggly.mod = mgcv::gam(close ~ s(kijun, k = 15), data = train)
+
+
+train %>% 
+  gather_predictions(linear.mod, smooth.mod, wiggly.mod) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = kijun, y = close)) + 
+  geom_point() + 
+  geom_line(aes(y = pred), color = "red") + 
+  facet_wrap(~model)
+```
+
+```{r gam4 model,include=TRUE, echo=FALSE}
+
+#tenkan
+linear.mod = lm(close ~ tenkan, data = train)
+smooth.mod = mgcv::gam(close ~ s(tenkan), data = train)
+wiggly.mod = mgcv::gam(close ~ s(tenkan, k = 15), data = train)
+
+
+train %>% 
+  gather_predictions(linear.mod, smooth.mod, wiggly.mod) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = tenkan, y = close)) + 
+  geom_point() + 
+  geom_line(aes(y = pred), color = "red") + 
+  facet_wrap(~model)
+```
+
+```{r gam5 model,include=TRUE, echo=FALSE}
+
+#rsi
+linear.mod = lm(close ~ rsi, data = train)
+smooth.mod = mgcv::gam(close ~ s(rsi), data = train)
+wiggly.mod = mgcv::gam(close ~ s(rsi, k = 15), data = train)
+
+
+train %>% 
+  gather_predictions(linear.mod, smooth.mod, wiggly.mod) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = rsi, y = close)) + 
+  geom_point() + 
+  geom_line(aes(y = pred), color = "red") + 
+  facet_wrap(~model)
+
+```
+
+\subsection{GAM individual model fit}
+\label{sec:g1}
+
+The GAM model was used to fit each of the 5 individual key indicators. As seen, we can not use them individually to get a great model of closing prices. They all need to be used in conjunction to create the best fitting model.
+
+
+
+\newpage
+
+\section{Cross Validation}
+\label{sec:s3}
+
+A cross-validation (CV) will be performed on the five indicators to determine the best K value to use in our GAM model.
+
+
+```{r single factor macd26 cross validation,include=TRUE, echo=FALSE}
+
+# 
+set.seed(1)
+mod_gam1 <- gam(close ~ s(macd_26), data=train)
+summary(mod_gam1)
+
+
+cv.error = rep(0,15)
+for (i in 1:15){
+glm.fit = glm(close ~ poly(macd_26,i),data=train)
+cv.error[i] = cv.glm(train,glm.fit,K=10)$delta[1]
+}
+which.min(cv.error)
+
+{
+plot(cv.error, type="b", xlab="Degree", ylab="Test MSE", main="CV Test MSE for macd_26")
+points(which.min(cv.error), cv.error[which.min(cv.error)], col="red", pch=20, cex=2)
+}
+
+
+```
+
+\subsection{Cross Validation}
+\label{sec:s31}
+
+CV best K = 12 for the macd_26 indicator
+
+\newpage
+
+```{r single factor macd9 cross validation,include=TRUE, echo=FALSE}
+
+set.seed(1)
+mod_gam1 <- gam(close ~ s(macd_9), data=train)
+summary(mod_gam1)
+
+
+cv.error = rep(0,15)
+for (i in 1:15){
+glm.fit = glm(close ~ poly(macd_9,i),data=train)
+cv.error[i] = cv.glm(train,glm.fit,K=10)$delta[1]
+}
+which.min(cv.error)
+
+{
+plot(cv.error, type="b", xlab="Degree", ylab="Test MSE", main="CV Test MSE for macd_9")
+points(which.min(cv.error), cv.error[12], col="red", pch=20, cex=2)
+}
+
+
+
+```
+
+\subsection{Cross Validation}
+\label{sec:s4}
+
+CV best K = 12 for the macd_9 indicator
+
+\newpage
+```{r single factor kijun cross validation,include=TRUE, echo=FALSE}
+
+set.seed(1)
+mod_gam1 <- gam(close ~ s(kijun), data=train)
+summary(mod_gam1)
+
+
+cv.error = rep(0,15)
+for (i in 1:15){
+glm.fit = glm(close ~ poly(kijun,i),data=train)
+cv.error[i] = cv.glm(train,glm.fit,K=10)$delta[1]
+}
+which.min(cv.error)
+
+{
+plot(cv.error, type="b", xlab="Degree", ylab="Test MSE",main="CV Test MSE for kijun")
+points(which.min(cv.error), cv.error[15], col="red", pch=20, cex=2)
+}
+
+
+```
+\subsection{Cross Validation}
+\label{sec:s5}
+
+CV best K = 15 for the kijun indicator
+
+\newpage
+
+```{r single factor tenkan cross validation,include=TRUE, echo=FALSE}
+
+set.seed(1)
+mod_gam1 <- gam(close ~ s(tenkan), data=train)
+summary(mod_gam1)
+
+
+cv.error = rep(0,15)
+for (i in 1:15){
+glm.fit = glm(close ~ poly(tenkan,i),data=train)
+cv.error[i] = cv.glm(train,glm.fit,K=10)$delta[1]
+}
+which.min(cv.error)
+
+{
+plot(cv.error, type="b", xlab="Degree", ylab="Test MSE", main="CV Test MSE for tenkan")
+points(which.min(cv.error), cv.error[which.min(cv.error)], col="red", pch=20, cex=2)
+}
+
+
+```
+
+\subsection{Cross Validation}
+\label{sec:s51}
+
+CV best K = 10 for the tenkan indicator
+
+\newpage
+
+
+```{r single factor rsi cross validation,include=TRUE, echo=FALSE}
+
+set.seed(1)
+mod_gam1 <- gam(close ~ s(rsi), data=train)
+summary(mod_gam1)
+
+
+cv.error = rep(0,15)
+for (i in 1:15){
+glm.fit = glm(close ~ poly(rsi,i),data=train)
+cv.error[i] = cv.glm(train,glm.fit,K=10)$delta[1]
+}
+which.min(cv.error)
+
+{
+plot(cv.error, type="b", xlab="Degree", ylab="Test MSE", main="CV Test MSE for rsi")
+points(which.min(cv.error), cv.error[which.min(cv.error)], col="red", pch=20, cex=2)
+}
+
+
+```
+
+\subsection{Cross Validation}
+\label{sec:s6}
+
+CV best K=2 for the rsi indicator
+
+\newpage
+
+
+```{r gam extensive model, include=TRUE, echo=FALSE}
+
+
+mod.gam = gam(close ~ ns(macd_26,13) + ns(macd_9,12) + ns(kijun,15) + ns(tenkan,10) + ns(rsi,2), data=train, family = gaussian)
+summary(mod.gam)
+
+```
+\newpage
+
+```{r gam extensive model plot, include=TRUE, echo=FALSE}
+
+mod_gam_pred =  predict(mod.gam)
+prediction =  predict(mod.gam, Indicators)
+error =  Indicators$close - prediction
+
+
+# Plot the predicted closing price for BTC
+#plot(mod_gam_pred, pch=19, cex=0.5)
+
+
+#error close and prediction
+#plot(error)
+
+
+# Plot the actual vs. predicted
+x = 1:nrow(Indicators)
+{
+plot(x, Indicators$close, ylab = "BTC Close", col="blue", type = "l", main = "GAM Prediction Vs Fitted")
+lines(x, prediction, col="red", type = "l" )
+legend("topleft", legend=c("y-fitted", "y-original"),
+        col=c("red", "blue"), lty=1, cex=0.7)
+}
+
+
+```
+
+
+\section{GAM actual vs. predicted Closing Price}
+\label{sec:f1}
+
+This plot overlays the fitted GAM model vs. Actual BTC closing price. This is a very good fit and a suprisingly accurate model to predict BTC closing price from the previous day five indicators.
+
+
+\newpage
+
+
+
+
+\section{Lasso and Ridge Models}
+\label{sec:s7}
+
+
+We are going to build a lasso and ridge regression model using all predictor variables in order to predict the close price. We will also determine which predictors went to zero using the lasso model and we will compare the test MSE for each model to determine which model performs the best. Both models will be tested using cross validation with ten folds. 
+
+```{r, lasso, echo=FALSE}
+set.seed(1)
+lasso.mod = cv.glmnet(x_train,y_train,alpha=1,nfolds = 10)
+bestlam = lasso.mod$lambda.min
+lasso.pred = predict(lasso.mod ,s=bestlam ,newx=x_test)
+lasso.coef= predict(lasso.mod ,type="coefficients",s= bestlam) [1:15,]
+lasso.mse = mean((lasso.pred - y_test)^2)
+
+plot(lasso.pred,y_test,main='Lasso predictions vs. Actual',xlab='Predicted',ylab='Actual')
+lines(y_test,y_test)
+```
+
+```{r, ridge, echo=FALSE}
+set.seed(1)
+ridge.mod = cv.glmnet(x_train,y_train,alpha=0,nfolds = 10)
+bestlam = ridge.mod$lambda.min
+ridge.pred = predict(ridge.mod ,s=bestlam ,newx=x_test)
+ridge.mse = mean((ridge.pred - y_test)^2)
+ridge.coef = predict(ridge.mod ,type="coefficients",s= bestlam) [1:15,]
+
+plot(ridge.pred,y_test,main='Ridge predictions vs. Actual',xlab='Predicted',ylab='Actual')
+lines(y_test,y_test)
+```
+
+
+\section{Model Evaluation}
+\label{sec:eval}
+
+The lasso model determined the predictor variables macd_9, span_a, span_b, and the sma all had a coeffienct of zero which indicates these variables are not important when trying to predict the close price of bitcoin. The test MSE for the lasso model is `r lasso.mse` which is quite a bit better than the test MSE of the ridge model of `r ridge.mse`. Overall a lasso model is preferred to a ridge model when predicting the close price of bitcoin.
+
+# Calculating metrics
+Our team will now compare test MSE's across all four models.
+
+
+```{r,warning=FALSE, echo=FALSE}
+
+lm.fit = lm(close~.,data=train)
+lm.pred = predict(lm.fit,newdata=test)
+
+gam.pred = predict(mod.gam,newdata=test)
+gam.mae = mean(abs(gam.pred-test$close))
+gam.rss = sum((lm.pred-test$close)^2)
+gam.tss = sum((test$close - mean(test$close))^2)
+gam.r2 = 1 - (gam.rss/gam.tss)
+
+lm.mse = mean((lm.pred-test$close)^2)
+gam.mse = mean((gam.pred-test$close)^2)
+
+```
+
+\newpage
+
+\section{Model Evaluation}
+\label{sec:eval}
+
+After comparing test MSE across the four models we have the following test MSE scores:  
+
+* Linear Regression: `r lm.mse`
+* GAM: `r gam.mse`
+* Lasso: `r lasso.mse`
+* Ridge: `r ridge.mse`
+
+So we can conclude that the best model to use for predicting bitcoin close price is the GAM model which used natural splines at the optimal degree which was found by using cross validation techniques.
+
+We also were able to discover the coefficients for most important predictor variables that can be used to successfully predict the bitcoin close price which are the following:  
+
+* GAM:
+  + macd_26 with a natural spline of 13 degrees
+  + macd_9 with a natural spline of 12 degrees
+  + kijun with a natural spline of 15 degrees
+  + tenkan with a natural spline of 10 degrees
+  + rsi with a natural spline of 2 degrees
+  
+
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Our team has evaluated four different models that can be used to predict the closing price of bitcoin. After looking at the test mse scores of the four models we have concluded that the GAM model which used natural splines was able to report a MSE of `r gam.mse` a MAE of `r gam.mae` and an r-squared of `r gam.r2`. Overall all our team was excited about our discovery and really enjoyed the process of building a statistical model to help predict the close price of bitcoin. 
+
+
+## Group Participation:
+Laura: Laura worked on the linear regression portion of this report, including the plots and description of results.
+Shawn: Shawn worked on the GAM model for this report, including the plots and analysis of the model.
+Justin: Justin worked on the ridge regression model for this report, plots and interpretation.
+Josh: Josh worked on the lasso regression model for this report, including the interpretation of results and plots. 
+
+The entire team worked collaboratively on the data collection/cleansing portion of the project, as well as the Cross Validation for the GAM model, and the overall formatting, and comparison of all models considered in this report. 
+
+
+\subsection{Disclaimer}
+\label{sec:disclaimer}
+
+We are aware that we violated the assumptions that our observations are not independent. Be aware these models need to be taken with a grain of salt and to not be used for day trading.

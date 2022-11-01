@@ -56,9 +56,14 @@ The lasso model determined the predictor variables macd_9, span_a, span_b, and t
 Our team has evaluated four different models that can be used to predict the closing price of bitcoin. After looking at the test mse scores of the four models we have concluded that the GAM model which used natural splines at the optimal degree which was found by using cross validation techniques, was able to report a MSE of 2.4589802 × 10<sup>6</sup> a MAE of 969.4837132 and an r-squared of 0.9916912. We also were able to discover the coefficients for most important predictor variables that can be used to successfully predict the bitcoin close price which are the following:
 
 – macd_26 with a natural spline of 13 degrees
+
 – macd_9 with a natural spline of 12 degrees
+
 – kijun with a natural spline of 15 degrees
+
 – tenkan with a natural spline of 10 degrees
+
 – rsi with a natural spline of 2 degrees
+
 
 

@@ -20,13 +20,13 @@ Bitcoin (BTC) is a consensus network that enables a new payment system and a ful
 <img src="https://raw.githubusercontent.com/LKPelayoUribe/Analyzing-key-financial-indicators/main/lm_model.PNG">
 
 Given the p-values of the closing price of BTC, we may reject the null hypothesis for the following indicators.
-• volume (previous days trading volume)
-• macd_26 (moving average convergence divergence, 26 day trend)
-• macd_9 (moving average convergence divergence, 9 day trend)
-• span_a (measures momentum)
-• Kijun (midpoint price the last 26 periods)
-• Tenkan (japanese indicator)
-• RSI (relative strength index)
+- volume (previous days trading volume)
+- macd_26 (moving average convergence divergence, 26 day trend)
+- macd_9 (moving average convergence divergence, 9 day trend)
+- span_a (measures momentum)
+- Kijun (midpoint price the last 26 periods)
+- Tenkan (japanese indicator)
+- RSI (relative strength index)
 
 <img src="https://raw.githubusercontent.com/LKPelayoUribe/Analyzing-key-financial-indicators/main/Corr_Analysis_lm.PNG">
 
